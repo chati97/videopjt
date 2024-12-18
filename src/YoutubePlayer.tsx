@@ -1,5 +1,4 @@
-import React, { useEffect, useState } from "react";
-import YouTube, { YouTubeProps } from "react-youtube";
+import React, { useEffect, useRef, useState } from "react";
 
 interface Clip{
   speakerName: string,
@@ -10,10 +9,51 @@ interface Clip{
 }
 
 const YoutubePlayer: React.FC = () => {
-  const onPlayerReady: YouTubeProps['onReady'] = (event) => {
-      console.log("player is ready");
-      event.target.playVideo();
-  };
+  const playerRef = useRef<HTMLDivElement>(null);
+
+  const [url, setUrl] = useState<string>('');
+  const [inputValue, setInputValue] = useState<string>('');
+
+  const [player, setPlayer] = useState<YT.Player | null>(null);
+
+  const inputValueHandler = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value);
+  }
+
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://www.youtube.com/iframe_api";
+    script.async = true;
+    document.body.appendChild(script);
+
+    (window as any).onYouTubeIframeAPIReady = () => {
+      if (playerRef.current) {
+        const newPlayer = new window.YT.Player(playerRef.current, {
+          height: '390',
+          width: '640',
+          videoId: url,
+          playerVars: {
+            autoplay: 0,
+            controls: 1,
+            start: 0,
+            end: 0,
+          }
+        })
+        setPlayer(newPlayer);
+      }
+    };
+
+    return (() => {
+      document.body.removeChild(script);
+    })
+  }, []);
+
+  useEffect(() => {
+    if (player && url) {
+      player.loadVideoById(url);
+    }
+  }, [url, player]);
+
   
   const [file, setFile] = useState<File | null>(null);
   const [data, setData] = useState < Clip[]>([]);
@@ -63,42 +103,43 @@ const YoutubePlayer: React.FC = () => {
     console.log(`data update: ${JSON.stringify(data, null, 2)}`)
   }, [data])
 
-  const [opts, setOpts] = useState<YouTubeProps['opts']> ({
-      height: '390', 
-      width: '640',
-      playerVars: {
-        autoplay: 0, // 자동 재생
-          controls: 1, // 컨트롤 표시
-          start: 5,
-        end: 7,
-      },
-  });
-  const onClickClip = (start: string, end: string) => {
-    setOpts((prevOpts: YouTubeProps['opts']) => ({
-      ...prevOpts,
-      playerVars: {
-        ...prevOpts.playerVars,
-        start: hmsToNumber(start),
-        end: hmsToNumber(end),
-        autoplay: 1
+  const onPlayLoop = (start: string, end: string) => {
+    const startTime = hmsToNumber(start);
+    const endTiem = hmsToNumber(end);
+
+    player?.seekTo(startTime, true);
+    player?.playVideo();
+    const interval = setInterval(() => {
+      if (player && player?.getCurrentTime() >= endTiem) {
+        player.pauseVideo();
+        clearInterval(interval);
       }
-    }))
+    }, 10)
   }
+
+
     
   return (
       <div>
-        <YouTube videoId="crLbUTFh2oQ" opts={opts} onReady={onPlayerReady} />
+      {/* <YouTube videoId="crLbUTFh2oQ" opts={opts} onReady={onPlayerReady} /> */}
+      <div ref={playerRef}/>
       <input type="file" accept=".csv" onChange={fileHandler} />
+      <input type="text" value={inputValue} onChange={inputValueHandler} />
+      <button onClick={() => {
+        setUrl(inputValue) 
+        console.log(url)
+      }}>seturl</button>
+      
       {file && <p>선택된 파일: {file.name}</p>}
-      <div>
-        {data.map((item, index) => (
-          <div key={index}>
-            {item.startTime} ~ {item.endTime} <br /> kor : {item.korSub} <br/>
-            {/* <br /> eng : {item.engSub} */}
-            <button onClick={() => onClickClip(item.startTime, item.endTime)}>start</button>
-          </div>
-        ))}
-      </div>
+        <div>
+          {data.map((item, index) => (
+            <div key={index}>
+              {item.startTime} ~ {item.endTime} <br /> kor : {item.korSub} <br/>
+              {/* <br /> eng : {item.engSub} */}
+              <button onClick={() => onPlayLoop(item.startTime, item.endTime)}>start</button>
+            </div>
+          ))}
+        </div>
       </div>
     );
 }
