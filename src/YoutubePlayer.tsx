@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import Papa from 'papaparse'
 
 interface Clip{
   speakerName: string,
@@ -17,6 +18,10 @@ const YoutubePlayer: React.FC = () => {
 
   const inputValueHandler = (e: React.ChangeEvent<HTMLInputElement>) => {
     setInputValue(e.target.value);
+  }
+
+  const timeValueHandler = (e: React.ChangeEvent<HTMLInputElement>) => {
+    
   }
 
   //Youtube Player 코드
@@ -83,6 +88,19 @@ const YoutubePlayer: React.FC = () => {
     }
   }
 
+  const numberToHms = (time: number) => {
+    if (time) {
+      const hours = Math.floor(time / 3600);
+      const minutes = Math.floor((time - hours * 3600) / 60);
+      const seconds = Math.floor((time - hours * 3600 - minutes * 60));
+      const miliseconds = Math.round((time - hours * 3600 - minutes * 60 - seconds) * 100);
+      console.log(miliseconds);
+      return `${hours >= 10 ? hours : `0${hours}`}:${minutes >= 10 ? minutes: `0${minutes}`}:${seconds >= 10 ? seconds : `0${seconds}`}:${miliseconds >= 10 ? miliseconds : `0${miliseconds}`}`
+    } else {
+      return '';
+    }
+  }
+
   
   // csv파일 업로드 및 분석 코드
   
@@ -96,13 +114,15 @@ const YoutubePlayer: React.FC = () => {
     }
   }
 
-
   const fileReader = (file: File) => {
     const reader = new FileReader();
 
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      const rows = text.split("\n").map((row) => row.split(','));
+      const parseData = Papa.parse(text, {
+        skipEmptyLines: true,
+      })
+      const rows = parseData.data as string[][];
       const arr: Clip[] = [];
       for (let i = 1; i < rows.length; i++){
         const content: Clip = {
@@ -118,13 +138,40 @@ const YoutubePlayer: React.FC = () => {
     reader.readAsText(file);
   }
 
-  // useEffect(() => {
-  //   console.log(`data update: ${JSON.stringify(data, null, 2)}`)
-  // }, [data])
+  // csv 파일 내보내기
 
-  
+  const exportCSV = () => {
+    const headers = Object.keys(data[0]);
+    const csvRows = [];
+    csvRows.push(headers.join(','));
+    data.forEach((row) => {
+      const values = headers.map((header) => row[header as keyof Clip]);
+      csvRows.push(values.join(','));
+    });
 
-  
+    const csvString = csvRows.join('\n');
+
+    const blob = new Blob([csvString], { type: 'text/csv; charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'clips.csv';
+    a.click();
+
+    URL.revokeObjectURL(url);
+  }
+
+  // 시작 or 종료시간 수정
+
+  const changeTime = (index: number, time: string, change: number, isStart: boolean) => {
+    const newTime = numberToHms(hmsToNumber(time) + change);
+    console.log(`${newTime} change ${change}`);
+    setData((prevData) => 
+      prevData.map((item, i) => i === index ? isStart ?{ ...item, startTime: newTime } : {...item, endTime: newTime} : item)
+    )
+  }
+
   return (
       <div>
         {/* sample video id : crLbUTFh2oQ */}
@@ -133,22 +180,64 @@ const YoutubePlayer: React.FC = () => {
       <button onClick={() => {
         setVideoId(inputValue) 
       }}>setVideoId</button>
-      <button onClick={() => {
-        player?.setPlaybackRate(0.5)
-      }}>0.5</button>
-      <button onClick={() => {
-        player?.seekTo(player.getCurrentTime() + 0.01, true)
-      }}>+0.01</button>
+      
+        <button onClick={exportCSV}>내보내기</button>
       <input type="file" accept=".csv" onChange={fileHandler} />
-      {file && <p>선택된 파일: {file.name}</p>}
-        <div>
+      <table>
+        <thead>
+          <tr>
+            <th>시작시간</th>
+            <th>종료시간</th>
+            <th>자막</th>
+            <th>옵션</th>
+          </tr>
+        </thead>
+        <tbody>
           {data.map((item, index) => (
-            <div key={index}>
-              {item.startTime} ~ {item.endTime} <br /> kor : {item.korSub} <br/>
-              <button onClick={() => onPlayLoop(item.startTime, item.endTime)}>start</button>
-            </div>
+            <tr key={index}>
+              <td>
+                <input key={index} type="text" value={item.startTime} readOnly />
+                <button onClick={() => changeTime(index, item.startTime, -0.1, true)}>-0.1</button>
+                <button onClick={() => changeTime(index, item.startTime, -0.01, true)}>-0.01</button>
+                <button onClick={() => changeTime(index, item.startTime, +0.01, true)}>+0.01</button>
+                <button onClick={() => changeTime(index, item.startTime, +0.1, true)}>+0.1</button>
+              </td>
+              <td>
+                <input type="text" value={item.endTime} readOnly/>
+                <button onClick={() => changeTime(index, item.endTime, -0.1, false)}>-0.1</button>
+                <button onClick={() => changeTime(index, item.endTime, -0.01, false)}>-0.01</button>
+                <button onClick={() => changeTime(index, item.endTime, +0.01, false)}>+0.01</button>
+                <button onClick={() => changeTime(index, item.endTime, +0.1, false)}>+0.1</button>
+              </td>
+              <td>
+                {item.korSub}
+              </td>
+              <td>
+                <button onClick={() => {
+                  player?.setPlaybackRate(1)
+                }}>1배속</button>
+                <button onClick={() => {
+                  player?.setPlaybackRate(2)
+                }}>2배속</button>
+              </td>
+              {/* <button onClick={() => onPlayLoop(item.startTime, item.endTime)}>start</button>
+              <button >수정</button>
+              <button onClick={() => {
+                player?.seekTo(player.getCurrentTime() - 0.1, true)
+              }}>-0.1</button>
+              <button onClick={() => {
+                player?.seekTo(player.getCurrentTime() - 0.01, true)
+              }}>-0.01</button>
+              <button onClick={() => {
+                player?.seekTo(player.getCurrentTime() + 0.01, true)
+              }}>+0.01</button>
+              <button onClick={() => {
+                player?.seekTo(player.getCurrentTime() + 0.1, true)
+              }}>+0.1</button> */}
+            </tr>
           ))}
-        </div>
+        </tbody>
+      </table>
       </div>
     );
 }
